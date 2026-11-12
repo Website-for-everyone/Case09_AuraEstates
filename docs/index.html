@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<script>
+(function() {
+  const MOCK_DB = {"/api/residences": [{"id": "penthouse", "name": "Penthouse Sky Villa", "price": 12500000, "price_formatted": "$12,500,000", "sqm": 480, "terrace_sqm": 110, "floor": "48–49 (Пентхаус)", "view": "180° Панорама океана", "status": "Available", "features": ["Частный инфинити-бассейн", "Личный лифт", "SPA-зона с хамамом", "Винная комната"]}, {"id": "horizon", "name": "Horizon Residence", "price": 7800000, "price_formatted": "$7,800,000", "sqm": 310, "terrace_sqm": 65, "floor": "34 (Угловая секция)", "view": "Закатный скайлайн", "status": "Reserved", "features": ["Панорамное остекление 3.8м", "Мастер-блок с двумя гардеробными", "Умный дом Lutron"]}, {"id": "duplex", "name": "Royal Duplex", "price": 9200000, "price_formatted": "$9,200,000", "sqm": 395, "terrace_sqm": 85, "floor": "22–23 (Двухуровневый)", "view": "Альпийские горы и залив", "status": "Available", "features": ["Второй свет высотой 7.2м", "Терраса с камином", "Кухня Bulthaup с техникой Gaggenau"]}, {"id": "garden", "name": "Garden Suite", "price": 5400000, "price_formatted": "$5,400,000", "sqm": 240, "terrace_sqm": 40, "floor": "1 (Собственный патио)", "view": "Центральный парк", "status": "Sold", "features": ["Приватный сад с оранжереей", "Отдельный вход", "Зона BBQ из натурального гранита"]}]};
+  const STORAGE_KEY = "idrisov_demo_" + "Case09_AuraEstates";
+  let localState = {};
+  try { localState = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch(e) {}
+  function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(localState)); } catch(e) {} }
+
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async function(input, init) {
+    const urlStr = typeof input === "string" ? input : (input && input.url) || "";
+    if (!urlStr.includes("/api/")) {
+      return origFetch(input, init);
+    }
+
+    const method = ((init && init.method) || "GET").toUpperCase();
+    let body = {};
+    if (init && init.body && typeof init.body === "string") {
+      try { body = JSON.parse(init.body); } catch(e) {}
+    }
+
+    const pathOnly = urlStr.split("?")[0];
+    const urlPath = pathOnly.startsWith("http") ? new URL(pathOnly).pathname : pathOnly;
+
+    // 1. Exact GET match from extracted FastAPI TestClient data
+    if (method === "GET") {
+      if (MOCK_DB[urlStr]) return jsonResp(MOCK_DB[urlStr]);
+      if (MOCK_DB[urlPath]) return jsonResp(MOCK_DB[urlPath]);
+      for (const k of Object.keys(MOCK_DB)) {
+        if (k.split("?")[0] === urlPath) return jsonResp(MOCK_DB[k]);
+      }
+      if (urlPath.includes("/api/dataset/") && !MOCK_DB[urlPath]) {
+        const fallbackKey = Object.keys(MOCK_DB).find(k => k.startsWith("/api/dataset/"));
+        if (fallbackKey) return jsonResp(MOCK_DB[fallbackKey]);
+      }
+    }
+
+    // 2. Dynamic Calculators & Interactive Endpoints
+    if (urlPath.endsWith("/calculate")) {
+      const base = Number(body.base_price || body.area || body.days || 1) * 1500 || 4500;
+      const total = Math.max(2500, Math.round(base + (Number(body.weight_kg || 5) * 200)));
+      return jsonResp({
+        status: "ok",
+        total_price: total,
+        price_rub: total,
+        estimated_price: total,
+        duration_minutes: 90,
+        breakdown: { base: Math.round(total * 0.7), extras: Math.round(total * 0.3) },
+        currency: "RUB"
+      });
+    }
+
+    if (urlPath.includes("/estimate")) {
+      return jsonResp({
+        status: "ok",
+        total_rub: 3850000,
+        timeline_weeks: 8,
+        summary: "Смета сформирована (Static Demo Mode)",
+        estimate_id: "EST-" + Math.floor(1000 + Math.random() * 9000)
+      });
+    }
+
+    if (urlPath.includes("/query") || urlPath.includes("/historian/ask")) {
+      const q = body.question || body.query || body.prompt || "Анализ данных";
+      return jsonResp({
+        status: "ok",
+        answer: "Аналитический ответ (Demo AI): по запросу «" + q + "» выявлена устойчивая корреляция (r = 0.78, p < 0.01). Медианные значения находятся в пределах целевого диапазона без критических выбросов.",
+        metrics: [
+          { label: "Медиана", value: "42.8" },
+          { label: "Std Dev", value: "6.14" },
+          { label: "Выбросы", value: "2.1%" }
+        ]
+      });
+    }
+
+    if (urlPath.includes("/quiz/recommend")) {
+      return jsonResp({
+        status: "ok",
+        recommendation: {
+          name: "Ethiopia Yirgacheffe Kochere",
+          origin: "Ethiopia",
+          roast: "Light Filter",
+          notes: ["Бергамот", "Жасмин", "Персик"],
+          match_percent: 96
+        }
+      });
+    }
+
+    if (urlPath.includes("/verify-passcode")) {
+      return jsonResp({ status: "success", unlocked: true, valid: true, message: "VIP ACCESS GRANTED" });
+    }
+
+    if (urlPath.includes("/track-order")) {
+      return jsonResp({
+        status: "success",
+        order_id: urlPath.split("/").pop() || "CR-2026",
+        stage: "Регулировка хода и тест герметичности (Этап 4/5)",
+        master: "Виктор К.",
+        eta: "2 дня"
+      });
+    }
+
+    if (urlPath.includes("/tasks")) {
+      localState.tasks = localState.tasks || (MOCK_DB["/api/tasks"] && MOCK_DB["/api/tasks"].tasks) || [];
+      if (method === "POST" && urlPath.endsWith("/tasks")) {
+        const t = { id: Date.now(), title: body.title || "Новая задача", duration_hours: Number(body.duration_hours || 1), quadrant: body.quadrant || "urgent_important", is_completed: false };
+        localState.tasks.push(t);
+        saveState();
+        return jsonResp({ status: "ok", task: t, tasks: localState.tasks });
+      }
+      if (urlPath.includes("/toggle")) {
+        const id = Number(urlPath.split("/")[3]);
+        localState.tasks = localState.tasks.map(t => t.id === id ? { ...t, is_completed: !t.is_completed } : t);
+        saveState();
+        return jsonResp({ status: "ok", tasks: localState.tasks });
+      }
+      if (method === "DELETE") {
+        const id = Number(urlPath.split("/").pop());
+        localState.tasks = localState.tasks.filter(t => t.id !== id);
+        saveState();
+        return jsonResp({ status: "ok", tasks: localState.tasks });
+      }
+      return jsonResp({ tasks: localState.tasks });
+    }
+
+    if (urlPath === "/api/state") {
+      return jsonResp(MOCK_DB["/api/state"] || {
+        title: "LIVE RAP & TECH BATTLE // FINAL",
+        round: 3,
+        status: "VOTING_OPEN",
+        fighters: [
+          { id: "mc_a", name: "MC NEON", votes: 142, color: "#00f0ff" },
+          { id: "mc_b", name: "BYTE_KILLER", votes: 138, color: "#ff007f" }
+        ]
+      });
+    }
+
+    if (urlPath === "/api/vote") {
+      return jsonResp({ status: "ok", message: "Голос учтен!", voted: true });
+    }
+
+    // Default POST confirmation (bookings, orders, quotes, appraisals, seat reservations)
+    const refId = "ID-" + Math.floor(10000 + Math.random() * 90000);
+    return jsonResp({
+      status: "ok",
+      success: true,
+      id: refId,
+      booking_id: refId,
+      cert_id: refId,
+      voucher: "VIP-" + refId,
+      order_id: refId,
+      message: "Заявка #" + refId + " успешно оформлена и синхронизирована с Telegram-ботом @Idrisov_prod!"
+    });
+  };
+
+  function jsonResp(data) {
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+})();
+</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aura Estates // Quiet Luxury & Private Residences</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Montserrat:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Ambient Cinematic Background Canvas -->
+  <canvas id="ambientCanvas" class="ambient-layer"></canvas>
+
+  <div class="luxury-wrapper">
+    <!-- Liquid Glass Navigation Header -->
+    <header class="glass-nav">
+      <div class="nav-brand">
+        <span class="gold-monogram">⚜</span>
+        <span class="brand-text">AURA ESTATES</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#residences">Коллекция</a>
+        <a href="#floorplan">Поэтажные планы</a>
+        <a href="#views">Виды из окон</a>
+        <a href="#calculator">Калькулятор инвестиций</a>
+      </nav>
+      <button class="gold-outline-btn" id="btnOpenTourModal">ЗАПИСЬ НА ПОКАЗ</button>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="glass-card hero-card">
+        <span class="collection-tag">РЕЗИДЕНЦИИ КЛАССА DE LUXE</span>
+        <h1 class="hero-title">Истинная Роскошь Не Нуждается в Шуме</h1>
+        <p class="hero-sub">
+          Архитектурный ансамбль Liquid Glass на первой береговой линии. 
+          Панорамное остекление от пола до потолка, частные инфинити-бассейны и консьерж-сервис мирового уровня.
+        </p>
+        <div class="hero-stats">
+          <div class="stat-block"><span class="val">480 м²</span><span class="lbl">МАКСИМАЛЬНАЯ ПЛОЩАДЬ</span></div>
+          <div class="stat-block"><span class="val">3.8 м</span><span class="lbl">ВЫСОТА ПОТОЛКОВ</span></div>
+          <div class="stat-block"><span class="val">180°</span><span class="lbl">ПАНОРАМА ОКЕАНА</span></div>
+          <div class="stat-block"><span class="val text-gold">4 ЛОТА</span><span class="lbl">В ЗАКРЫТОЙ ПРОДАЖЕ</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 1: Interactive Floor Plans -->
+    <section class="section-container" id="floorplan">
+      <div class="section-header">
+        <span class="gold-subtitle">ПЛАНИРОВОЧНЫЕ РЕШЕНИЯ</span>
+        <h2 class="section-title">Интерактивный План Резиденций</h2>
+      </div>
+
+      <div class="glass-card floorplan-card">
+        <!-- Residence Tabs -->
+        <div class="residence-tabs" id="residenceTabs">
+          <button class="tab-btn active" data-res="penthouse">
+            PENTHOUSE SKY VILLA <span class="status-pill status-avail">ДОСТУПНО</span>
+          </button>
+          <button class="tab-btn" data-res="horizon">
+            HORIZON RESIDENCE <span class="status-pill status-res">БРОНЬ</span>
+          </button>
+          <button class="tab-btn" data-res="duplex">
+            ROYAL DUPLEX <span class="status-pill status-avail">ДОСТУПНО</span>
+          </button>
+          <button class="tab-btn" data-res="garden">
+            GARDEN SUITE <span class="status-pill status-sold">ПРОДАНО</span>
+          </button>
+        </div>
+
+        <div class="floorplan-layout">
+          <!-- Vector SVG Blueprint -->
+          <div class="blueprint-canvas-container">
+            <svg class="blueprint-svg" viewBox="0 0 600 400" id="blueprintSvg">
+              <!-- Outer Architecture Walls -->
+              <rect x="20" y="20" width="560" height="360" rx="8" fill="rgba(255, 255, 255, 0.03)" stroke="#D4AF37" stroke-width="2"/>
+              <!-- Master Suite -->
+              <g class="room-zone" id="zoneMaster" data-name="Master Bedroom & Walk-in Suite" data-sqm="85 м²">
+                <rect x="40" y="40" width="220" height="150" fill="rgba(212, 175, 55, 0.08)" stroke="rgba(212, 175, 55, 0.4)" stroke-dasharray="4"/>
+                <text x="70" y="120" fill="#D4AF37" font-size="12" font-family="Montserrat">MASTER SUITE (85 м²)</text>
+              </g>
+              <!-- Grand Living & Dining Salon -->
+              <g class="room-zone" id="zoneLiving" data-name="Grand Living Salon & Dining" data-sqm="160 м²">
+                <rect x="280" y="40" width="280" height="200" fill="rgba(212, 175, 55, 0.08)" stroke="rgba(212, 175, 55, 0.4)" stroke-dasharray="4"/>
+                <text x="320" y="145" fill="#D4AF37" font-size="12" font-family="Montserrat">GRAND LIVING SALON (160 м²)</text>
+              </g>
+              <!-- Wellness Spa & Sauna -->
+              <g class="room-zone" id="zoneSpa" data-name="Private Wellness & Hamam" data-sqm="45 м²">
+                <rect x="40" y="210" width="130" height="150" fill="rgba(212, 175, 55, 0.08)" stroke="rgba(212, 175, 55, 0.4)" stroke-dasharray="4"/>
+                <text x="50" y="290" fill="#D4AF37" font-size="11" font-family="Montserrat">WELLNESS SPA (45 м²)</text>
+              </g>
+              <!-- Private Infinity Terrace -->
+              <g class="room-zone" id="zoneTerrace" data-name="Oceanfront Infinity Pool & Terrace" data-sqm="110 м²">
+                <rect x="190" y="260" width="370" height="100" fill="rgba(56, 189, 248, 0.1)" stroke="#38BDF8" stroke-dasharray="2"/>
+                <text x="260" y="315" fill="#38BDF8" font-size="12" font-family="Montserrat">INFINITY TERRACE & POOL (110 м²)</text>
+              </g>
+            </svg>
+            <div class="blueprint-hint">Наведите курсор на зону для просмотра деталей комнат</div>
+          </div>
+
+          <!-- Residence Spec Panel -->
+          <div class="residence-spec-panel">
+            <h3 class="res-title" id="resTitle">Penthouse Sky Villa</h3>
+            <div class="res-price" id="resPrice">$12,500,000</div>
+            <div class="spec-grid">
+              <div class="spec-row"><span>Общая площадь:</span><strong id="resSqm">480 м²</strong></div>
+              <div class="spec-row"><span>Площадь террасы:</span><strong id="resTerrace">110 м²</strong></div>
+              <div class="spec-row"><span>Этаж:</span><strong id="resFloor">48–49 (Пентхаус)</strong></div>
+              <div class="spec-row"><span>Вид:</span><strong id="resView">180° Панорама океана</strong></div>
+              <div class="spec-row"><span>Статус:</span><strong id="resStatus" class="text-avail">Доступно к сделке</strong></div>
+            </div>
+            <div class="room-hover-info" id="roomHoverInfo">
+              <span class="info-label">ВЫБРАННАЯ ЗОНА:</span>
+              <h4 id="hoverRoomName">Наведите на план</h4>
+              <p id="hoverRoomSqm">--</p>
+            </div>
+            <button class="gold-solid-btn" id="btnRequestPdf">ПОЛУЧИТЬ PDF-ПРЕЗЕНТАЦИЮ</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Panoramic Window View Filter -->
+    <section class="section-container" id="views">
+      <div class="section-header">
+        <span class="gold-subtitle">ГОРИЗОНТ И ПЕРСПЕКТИВА</span>
+        <h2 class="section-title">Фильтр по Виду из Окон</h2>
+      </div>
+
+      <div class="glass-card views-card">
+        <div class="view-filter-buttons">
+          <button class="view-btn active" data-view="ocean">🌊 ОКЕАНСКИЙ ГОРИЗОНТ</button>
+          <button class="view-btn" data-view="skyline">🏙 ЗАКАТНЫЙ СКАЙЛАЙН</button>
+          <button class="view-btn" data-view="mountains">⛰ АЛЬПИЙСКИЕ ГОРЫ</button>
+          <button class="view-btn" data-view="park">🌲 ЦЕНТРАЛЬНЫЙ ПАРК</button>
+        </div>
+
+        <div class="panoramic-viewer">
+          <div class="panoramic-visual" id="panoramicVisual">
+            <div class="panoramic-badge" id="viewBadge">OCEAN HORIZON VIEW // RESIDENCE 4801</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Mortgage & Rental Yield Calculator -->
+    <section class="section-container" id="calculator">
+      <div class="section-header">
+        <span class="gold-subtitle">ФИНАНСОВЫЙ ИНЖИНИРИНГ</span>
+        <h2 class="section-title">Калькулятор Ипотеки и Доходности</h2>
+      </div>
+
+      <div class="glass-card calc-card">
+        <div class="calc-grid">
+          <!-- Inputs Column -->
+          <div class="calc-inputs">
+            <div class="calc-field">
+              <div class="field-label-row">
+                <label>СТОИМОСТЬ ОБЪЕКТА ($):</label>
+                <span class="field-val" id="dispPrice">$12,500,000</span>
+              </div>
+              <input type="range" id="rngPrice" min="5000000" max="25000000" step="500000" value="12500000" class="gold-slider"/>
+            </div>
+
+            <div class="calc-field">
+              <div class="field-label-row">
+                <label>ПЕРВОНАЧАЛЬНЫЙ ВЗНОС (%):</label>
+                <span class="field-val" id="dispDownPct">30% ($3,750,000)</span>
+              </div>
+              <input type="range" id="rngDownPct" min="10" max="90" step="5" value="30" class="gold-slider"/>
+            </div>
+
+            <div class="calc-field">
+              <div class="field-label-row">
+                <label>СРОК КРЕДИТОВАНИЯ (ЛЕТ):</label>
+                <span class="field-val" id="dispTerm">20 лет</span>
+              </div>
+              <input type="range" id="rngTerm" min="5" max="30" step="1" value="20" class="gold-slider"/>
+            </div>
+
+            <div class="calc-field">
+              <div class="field-label-row">
+                <label>СТАВКА ФИНАНСИРОВАНИЯ (% ГОДОВЫХ):</label>
+                <span class="field-val" id="dispRate">4.5%</span>
+              </div>
+              <input type="range" id="rngRate" min="2.0" max="9.0" step="0.25" value="4.5" class="gold-slider"/>
+            </div>
+          </div>
+
+          <!-- Outputs Column -->
+          <div class="calc-outputs">
+            <div class="output-tile">
+              <span class="out-lbl">ЕЖЕМЕСЯЧНЫЙ ПЛАТЕЖ</span>
+              <h3 class="out-big text-gold" id="outMonthly">$55,360 / мес</h3>
+            </div>
+            <div class="output-tile">
+              <span class="out-lbl">СУММА ПЕРЕПЛАТЫ ПО КРЕДИТУ</span>
+              <h4 class="out-mid" id="outTotalInterest">$4,536,400</h4>
+            </div>
+            <div class="output-tile">
+              <span class="out-lbl">ОЖИДАЕМАЯ АРЕНДНАЯ ДОХОДНОСТЬ (CAP RATE)</span>
+              <h4 class="out-mid text-cyan" id="outCapRate">6.8% годовых ($850,000 / год)</h4>
+            </div>
+            <button class="gold-solid-btn" id="btnBookFromCalc">ЗАБРОНИРОВАТЬ ЭТОТ ЛОТ</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="luxury-footer">
+      <div class="footer-left">
+        <span class="gold-monogram">⚜</span>
+        <span>AURA ESTATES // DE LUXE COLLECTION</span>
+        <span class="pipe">|</span>
+        <span>VIP CONCIERGE BOT INTEGRATED</span>
+      </div>
+      <div class="footer-right">
+        <span>@Idrisov_prod ECOSYSTEM</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- VIP Showing Booking Modal -->
+  <div class="modal-overlay hidden" id="tourModal">
+    <div class="glass-card modal-window">
+      <button class="modal-close-btn" id="btnCloseModal">×</button>
+      <span class="gold-subtitle">ЗАКРЫТЫЙ ПОКАЗ</span>
+      <h3 class="modal-title">Запись на Приватный Тур</h3>
+      <p class="modal-sub">Наш VIP-консьерж организует приватный визит и вертолетный трансфер.</p>
+      
+      <form id="tourForm" class="modal-form">
+        <input type="text" id="custName" class="glass-input" placeholder="Ваше Имя и Фамилия" required />
+        <input type="tel" id="custPhone" class="glass-input" placeholder="Телефон / Telegram (@username)" required />
+        <select id="custRes" class="glass-input">
+          <option value="penthouse">Penthouse Sky Villa ($12,500,000)</option>
+          <option value="horizon">Horizon Residence ($7,800,000)</option>
+          <option value="duplex">Royal Duplex ($9,200,000)</option>
+          <option value="garden">Garden Suite ($5,400,000)</option>
+        </select>
+        <button type="submit" class="gold-solid-btn">ПОДТВЕРДИТЬ БРОНИРОВАНИЕ</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
