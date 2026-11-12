@@ -1,0 +1,13 @@
+{
+  "name": "aura-estates",
+  "version": "1.0.0",
+  "description": "Quiet Luxury Real Estate Showcase & VIP Concierge Bot",
+  "main": "web/app.js",
+  "scripts": {
+    "start": "python api/server.py",
+    "test": "pytest tests/ -v"
+  },
+  "keywords": ["quiet-luxury", "liquid-glass", "real-estate", "floorplans", "vip-concierge", "telegram-bot"],
+  "author": "Daniel Idrisov (@Idrisov_prod)",
+  "license": "MIT"
+}
